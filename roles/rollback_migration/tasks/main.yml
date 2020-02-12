@@ -75,7 +75,7 @@
 
   - name: List volumes labels alternatives
     set_fact:
-      vol_labels_alt: "{{ vol_labels | replace('-', '/') }}"
+      vol_labels_alt: "{{ vol_labels | replace('-', '/') | replace('//', '-') }}"
 
   - name: Map all volume names alternatives
     set_fact:
