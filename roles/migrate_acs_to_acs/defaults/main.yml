@@ -1,0 +1,28 @@
+---
+# If yes, do not ask for confirmation
+force_yes: no
+
+# Either or not migrate from PV to HVM
+hvm_migration: yes
+
+# How affinity groups are affected (auto, groups, no)
+affinity_policy: auto
+
+# OS type to use when migrating to HVM
+hvm_destination_os: Ubuntu 16.04 (64-bit)
+
+# Compute offerings equivalences between iaas1 and iaas2
+compute_eq:
+  m1.Small: m1.small
+  m1.medium: m1.medium
+  m1.large: m1.large
+  m1.xlarge: m1.xlarge
+
+# DATADISK must be uploaded with a custom offer.
+# This table converts disk size to disk offers.
+disk_offer:
+  10: DO1 - Small STD
+  50: DO2 - Medium STD
+  100: DO3 - Large STD
+  200: DO4 - XLarge STD
+  400: DO5 - XXLarge STD

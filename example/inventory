@@ -1,0 +1,10 @@
+[$MYVMS]
+front[01-03].test.$MYVMS.example.net
+
+[MYVMS:vars]
+vrouter_reserved_ip=$VROUTER_BACK_IP
+#vrouter_reserved_ip_front=$VROUTER_FRONT_IP
+
+[all:vars]
+ansible_user=$USER
+#force_yes=true

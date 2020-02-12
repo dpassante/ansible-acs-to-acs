@@ -1,0 +1,91 @@
+---
+- pause:
+    prompt: "\n!!!!!!!!!!!!!!!!!!!!!!!\nARE YOU SURE YOU WANT TO ROLLBACK THE MIGRATION FOR VM {{ inventory_hostname }} ? (yes/no)\n!!!!!!!!!!!!!!!!!!!!!!!"
+  register: pause
+
+- name: Rollback migration
+  block:
+  - name: Ensure destination VM is not present
+    cs_instance:
+      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      zone: "{{ destination.zone|default(omit) }}"
+      account: admin
+      domain: "{{ destination.domain|default(omit) }}"
+      project: "{{ destination.project|default(omit) }}"
+      display_name: "{{ inventory_hostname }}"
+      state: expunged
+    delegate_to: localhost
+
+  - name: Ensure DATA disk is not present in destination
+    cs_volume:
+      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      zone: "{{ destination.zone|default(omit) }}"
+      account: admin
+      domain: "{{ destination.domain|default(omit) }}"
+      project: "{{ destination.project|default(omit) }}"
+      state: absent
+      name: "DATA-{{ inventory_hostname }}"
+    delegate_to: localhost
+
+  - name: Ensure template is absent in destination
+    cs_template:
+      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      zone: "{{ destination.zone|default(omit) }}"
+      account: admin
+      domain: "{{ destination.domain|default(omit) }}"
+      project: "{{ destination.project|default(omit) }}"
+      name: "{{ inventory_hostname[:32] }}"
+      state: absent
+    delegate_to: localhost
+
+  - name: Restart source VM
+    cs_instance:
+      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      name: "{{ inventory_hostname }}"
+      domain: "{{ source.domain }}"
+      state: started
+    delegate_to: localhost
+
+  - name: Remove the temporary template from the source IaaS
+    cs_template:
+      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      zone: "{{ source.zone }}"
+      name: "{{ inventory_hostname[:32] }}"
+      domain: "{{ source.domain }}"
+      state: absent
+    delegate_to: localhost
+
+  - name: Wait for VM to become reachable
+    wait_for_connection:
+      delay: 5
+      timeout: 300
+
+  - name: Get VM infos
+    setup:
+    register: vm_infos
+
+  - name: Get xvdb infos
+    set_fact:
+      xvdb_info: "{{ vm_infos.ansible_facts.ansible_devices.xvdb }}"
+  
+  - name: Get xvdb partition and labels
+    set_fact:
+      xvdb_parts: "{{ xvdb_info.partitions.values() | ternary(xvdb_info.partitions.keys(), ['xvdb']) }}"
+      vol_labels: "{{ xvdb_info.partitions.values() | ternary(xvdb_info.partitions.xvdb1.holders, xvdb_info.holders) }}"
+
+  - name: List volumes labels alternatives
+    set_fact:
+      vol_labels_alt: "{{ vol_labels | replace('-', '/') }}"
+
+  - name: Map all volume names alternatives
+    set_fact:
+      vol_labels_all: "{{ vol_labels + vol_labels_alt }}"
+
+  - name: Remove DATA disk from fstab to avoid boot problems on destination VM
+    replace:
+      dest: /etc/fstab
+      regexp: "^#(/dev/.*{{ item }}.*)"
+      replace: '\1'
+    become: yes
+    with_items: "{{ vol_labels_all | ternary(vol_labels_all, xvdb_parts) }}"
+  when: pause.user_input == 'yes'

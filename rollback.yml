@@ -1,0 +1,11 @@
+---
+- name: Rollback VMs migration from Cloudstack to Cloudstack
+  hosts: all
+  gather_facts: no
+  serial: 1
+  vars:
+    - ansible_ssh_pipelining: no
+  strategy: linear
+
+  roles:
+    - rollback_migration

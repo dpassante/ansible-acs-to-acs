@@ -1,0 +1,12 @@
+---
+- name: Destroy source VMs after migrations are done
+  hosts: all
+  gather_facts: no
+  serial: 1
+  vars:
+    - ansible_ssh_pipelining: no
+    - hostname: nohost
+  strategy: linear
+
+  roles:
+    - destroy_source

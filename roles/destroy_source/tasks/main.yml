@@ -1,0 +1,63 @@
+---
+- pause:
+    prompt: "\n!!!!!!!!!!!!!!!!!!!!!!!\nARE YOU SURE YOU WANT TO DESTROY SOURCE VM {{ hostname }} ? (yes/no)\n!!!!!!!!!!!!!!!!!!!!!!!"
+  register: pause
+
+- name: DESTROY SOURCE VMs
+  block:
+  ### Check destination VM
+  - name: Get source VM facts
+    cs_instance_facts:
+      api_region: "{{ source.domain ~ '_' ~ source.region | mandatory }}"
+      name: "{{ hostname }}"
+      domain: "{{ source.domain | mandatory }}"
+    register: source_vm
+    delegate_to: localhost
+  - name: verify source VM is in "stopped" state
+    assert:
+      that:
+      - source_vm is successful
+      - source_vm.state in ["Stopped", "Destroyed"]
+
+  - name: Ensure destination VM is present and started
+    cs_instance:
+      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      name: "{{ hostname }}"
+      domain: "{{ destination.domain|default(omit) }}"
+    register: destination_vm
+    delegate_to: localhost
+  - name: verify destination VM is in "Running" state
+    assert:
+      that:
+      - destination_vm is successful
+      - destination_vm.state == "Running"
+
+  - name: Ping destination VM 
+    ping: 
+
+  ### Destroy source VM and DATA disk
+  - name: Destroy source VM
+    cs_instance:
+      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      name: "{{ hostname }}"
+      domain: "{{ source.domain }}"
+      state: expunged
+      delegate_to: localhost
+
+  - name: Get source VM DATA volume name
+    set_fact:
+      data_volume: "{% for volume in source_vm.volumes if volume.type == 'DATADISK' %}{{ volume.name }}{% endfor %}"
+
+  - name: Destroy DATA volume
+    cs_volume:
+      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      zone: "{{ source.zone }}"
+      state: absent
+      name: "{{ data_volume }}"
+      domain: "{{ source.domain }}"
+    register: destroy_data
+    delegate_to: localhost
+    until: destroy_data is success
+    retries: 30
+    delay: 2
+  when: pause.user_input == 'yes'

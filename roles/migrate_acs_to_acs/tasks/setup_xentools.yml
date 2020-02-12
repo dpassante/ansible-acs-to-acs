@@ -1,0 +1,20 @@
+---
+- name: Create a xentools temp dir
+  file:
+    path: /tmp/xentools
+    state: directory
+  when: vm.hypervisor == "XenServer"
+
+- name: Copy Xen tools into destination
+  unarchive:
+    src: xe-guest-utilities-7.10.0-1.tar.gz
+    dest: /tmp/xentools
+  when: vm.hypervisor == "XenServer"
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Install Xen tools
+  apt:
+    deb: /tmp/xentools/xe-guest-utilities_7.10.0-1_amd64.deb
+  become: yes
+  when: vm.hypervisor == "XenServer"
+  ignore_errors: "{{ ansible_check_mode }}"

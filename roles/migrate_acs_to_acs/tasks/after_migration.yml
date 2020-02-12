@@ -1,0 +1,45 @@
+---
+## XenServer VMs
+- name: Get VM infos
+  setup:
+  register: vm_infos
+  when: vm.hypervisor == "XenServer"
+
+- name: Get xvdb infos
+  set_fact:
+    xvdb_info: "{{ vm_infos.ansible_facts.ansible_devices.xvdb }}"
+  when: vm.hypervisor == "XenServer"
+
+- name: Get xvdb partition and labels
+  set_fact:
+    xvdb_parts: "{{ xvdb_info.partitions.values() | ternary(xvdb_info.partitions.keys(), ['xvdb']) }}"
+    vol_labels: "{{ xvdb_info.partitions.values() | ternary(xvdb_info.partitions.xvdb1.holders, xvdb_info.holders) }}"
+  when: vm.hypervisor == "XenServer"
+
+- name: List volumes labels alternatives
+  set_fact:
+    vol_labels_alt: "{{ vol_labels | replace('-', '/') | replace('//', '-') }}"
+  when: vm.hypervisor == "XenServer"
+
+- name: Map all volume names alternatives
+  set_fact:
+    vol_labels_all: "{{ vol_labels + vol_labels_alt }}"
+  when: vm.hypervisor == "XenServer"
+
+- name: Activate DATA disk automount
+  replace:
+    dest: /etc/fstab
+    regexp: "^#(/dev/.*{{ item }}.*)"
+    replace: '\1'
+  become: yes
+  with_items: "{{ vol_labels_all | ternary(vol_labels_all, xvdb_parts) }}"
+  when: vm.hypervisor == "XenServer"
+
+- name: Prepare VM for HVM Migration (grub + console)
+  script: PV_TO_HVM.sh
+  args:
+    creates: /tmp/pv_to_hvm_ok.txt
+  become: yes
+  when:
+    - vm.hypervisor == "XenServer"
+    - hvm_migration

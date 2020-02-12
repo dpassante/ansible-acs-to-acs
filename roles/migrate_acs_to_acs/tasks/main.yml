@@ -1,0 +1,269 @@
+---
+- name: Get source VM facts
+  cs_instance_facts:
+    api_region: "{{ source.domain ~ '_' ~ source.region | mandatory }}"
+    name: "{{ inventory_hostname }}"
+    domain: "{{ source.domain | mandatory }}"
+  register: vm
+  delegate_to: localhost
+
+- pause:
+    prompt: "\nThe VM {{ inventory_hostname }} will be stopped for migration. OK? (yes/no)"
+  register: pause
+  failed_when: pause.user_input != 'yes'
+  when:
+    - not ansible_check_mode
+    - not force_yes
+
+- name: Ensure VM networks are present on destination
+  cs_network:
+    api_region: "{{ source.domain ~ '_' ~ destination.region | mandatory }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    state: present
+    domain: "{{ destination.domain | mandatory }}"
+    project: "{{ destination.project|default(omit) }}"
+    name: "{{ destination.domain.split('/')[1] ~ '|' ~ item.networkname.split(' - ')[2] ~ '|' ~ item.networkname.split(' - ')[0] }}"
+    vlan: "{{ item.isolationuri|regex_replace('vlan://') }}"
+    network_offering: DefaultSharedNetworkOffering
+    gateway: "{{ item.gateway }}"
+    netmask: "{{ item.netmask }}"
+    start_ip: "{{ item.isdefault | ternary(vrouter_reserved_ip | mandatory, vrouter_reserved_ip_front | default(omit), omit) }}"
+  register: networks_out
+  delegate_to: localhost
+  with_items: "{{ vm.nic }}"
+
+- name: Include tasks to play before stopping VM
+  include: before_migration.yml
+  when: vm.state == 'Running'
+
+- name: stop source VM
+  cs_instance:
+    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    name: "{{ inventory_hostname }}"
+    domain: "{{ source.domain }}"
+    state: stopped
+  delegate_to: localhost
+
+- name: Get source VM volumes names
+  set_fact:
+    root_volume: "{% for volume in vm.volumes if volume.type == 'ROOT' %}{{ volume.name }}{% endfor %}"
+    data_volume: "{% for volume in vm.volumes if volume.type == 'DATADISK' %}{{ volume.name }}{% endfor %}"
+    data_volume_size: "{% for volume in vm.volumes if volume.type == 'DATADISK' %}{{ volume.size / 1024|pow(3) }}{% endfor %}"
+
+- name: Extract DATA volume to make it downloadable
+  cs_volume:
+    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_timeout: 1800
+    zone: "{{ source.zone }}"
+    state: extracted
+    name: "{{ data_volume }}"
+    domain: "{{ source.domain }}"
+  register: data_vol_out
+  delegate_to: localhost
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Templatize source VM (ROOT disk)
+  cs_template:
+    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_timeout: 1800
+    zone: "{{ source.zone }}"
+    name: "{{ inventory_hostname[:32] }}"
+    state: present
+    vm: "{{ inventory_hostname }}"
+    domain: "{{ source.domain }}"
+    os_type: Other PV (64-bit)
+  register: template
+  delegate_to: localhost
+
+- name: Extract template to make it downloadable
+  cs_template:
+    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_timeout: 1800
+    zone: "{{ source.zone }}"
+    name: "{{ inventory_hostname[:32] }}"
+    domain: "{{ source.domain }}"
+    state: extracted
+  register: template_out
+  delegate_to: localhost
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Reserve VM IPs on destination networks
+  cs_vlan_ip_range:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    state: present
+    network: "{{ destination.domain.split('/')[1] ~ '|' ~ item.networkname.split(' - ')[2] ~ '|' ~ item.networkname.split(' - ')[0] }}"
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    vlan: "{{ item.isolationuri|regex_replace('vlan://') }}"
+    gateway: "{{ item.gateway }}"
+    netmask: "{{ item.netmask }}"
+    start_ip: "{{ item.ipaddress }}"
+  delegate_to: localhost
+  with_items: "{{ vm.nic }}"
+
+- name: Configure affinity groups
+  set_fact:
+    anti_affinity: "{%- if affinity_policy != 'no' -%}
+                    {{ (affinity_policy == 'auto' and vm.affinity_groups) | ternary(vm.affinity_groups, group_names, group_names) }}
+                    {%- else -%}
+                    []
+                    {%- endif -%}"
+
+- name: Create affinity groups
+  cs_affinitygroup:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    name: "{{ item }}"
+    affinity_type: host anti-affinity
+  delegate_to: localhost
+  with_items: "{{ affinity_name is defined | ternary([affinity_name], anti_affinity) }}"
+
+- name: Register VM template into destination
+  cs_template:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_timeout: 1800
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    name: "{{ inventory_hostname[:32] }}"
+    hypervisor: "{{ template.hypervisor }}"
+    format: "{{ template.format }}"
+    #os_type: "{{ hvm_migration | ternary(hvm_destination_os, template.os_type) }}"
+    os_type: "{{ template.os_type }}"
+    url: "{{ template_out.url }}"
+  delegate_to: localhost
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Recreate the VM into destination
+  cs_instance:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    display_name: "{{ inventory_hostname }}"
+    template: "{{ inventory_hostname[:32] }}"
+    service_offering: "{{ compute_eq[vm.service_offering] | default(vm.service_offering) }}"
+    state: started
+    ip_to_networks: |
+      {%- set nics = [] -%}
+      {%- for network in vm.nic -%}
+      {{ nics.append({'network': destination.domain.split('/')[1] ~ '|' ~ network.networkname.split(' - ')[2] ~ '|' ~ network.networkname.split(' - ')[0], 'ip': network.ipaddress}) }}
+      {%- endfor -%}
+      {{ nics }}
+    affinity_groups: "{{ affinity_name is defined | ternary([affinity_name], anti_affinity) }}"
+  register: newvm
+  delegate_to: localhost
+  until: newvm is success
+  retries: 60
+  delay: 10
+  when: not ansible_check_mode
+
+- name: Wait for VM to become reachable
+  wait_for_connection:
+    delay: 5
+    timeout: 300
+
+- name: Setup Xen tools for xs 7.1
+  include: setup_xentools.yml
+
+- name: Download DATA volume into destination
+  cs_volume:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_timeout: 1800
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    state: uploaded
+    name: "DATA-{{ inventory_hostname }}"
+    format: VHD
+    url: "{{ data_vol_out.url }}"
+    disk_offering: custom
+  delegate_to: localhost
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Attach DATA volume to the destination VM
+  cs_volume:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_timeout: 1800
+    zone: "{{ destination.zone|default(omit) }}"
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    state: attached
+    name: "DATA-{{ inventory_hostname }}"
+    vm: "{{ inventory_hostname }}"
+  register: volume_attached
+  delegate_to: localhost
+  until: volume_attached is success
+  retries: 300
+  delay: 60
+  when: not ansible_check_mode
+
+- name: Include tasks to play on new VM
+  include: after_migration.yml
+
+- name: Stop the new VM in destination for HVM migration
+  cs_instance:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    display_name: "{{ inventory_hostname }}"
+    state: stopped
+  delegate_to: localhost
+  when:
+    - not ansible_check_mode
+    - hvm_migration
+
+- name: Update VM template to make it HVM ready
+  cs_template:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    name: "{{ inventory_hostname[:32] }}"
+    os_type: "{{ hvm_destination_os }}"
+  delegate_to: localhost
+  when:
+    - not ansible_check_mode
+    - hvm_migration
+
+- name: Restart the new VM in destination to make sure everything is OK
+  cs_instance:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    display_name: "{{ inventory_hostname }}"
+    state: restarted
+  delegate_to: localhost
+  when: not ansible_check_mode
+
+- name: Update DATA volume offer
+  cs_volume:
+    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    zone: "{{ destination.zone|default(omit) }}"
+    account: admin
+    domain: "{{ destination.domain|default(omit) }}"
+    project: "{{ destination.project|default(omit) }}"
+    name: "DATA-{{ inventory_hostname }}"
+    disk_offering: "{{ disk_offer[data_volume_size|int] }}"
+  delegate_to: localhost
+  ignore_errors: yes
+
+- name: Remove the temporary template from the source IaaS
+  cs_template:
+    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    zone: "{{ source.zone }}"
+    name: "{{ inventory_hostname[:32] }}"
+    domain: "{{ source.domain }}"
+    state: absent
+  delegate_to: localhost

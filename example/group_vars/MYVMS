@@ -1,0 +1,11 @@
+# Source IaaS information (cloudstack.ini section name)
+source:
+  region: iaas-1
+  zone: zone1
+  domain: my-domain
+
+# Destination IaaS information (cloudstack.ini section name)
+destination:
+  region: iaas-2
+  zone: zone1
+  domain: my-domain

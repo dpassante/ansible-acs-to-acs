@@ -1,0 +1,10 @@
+---
+- name: Migrate VMs from Cloudstack to Cloudstack
+  hosts: all
+  gather_facts: no
+  vars:
+    - ansible_ssh_pipelining: no
+  strategy: linear
+  serial: 1
+  roles:
+    - {role: 'migrate_acs_to_acs', tags: 'migrate'}
