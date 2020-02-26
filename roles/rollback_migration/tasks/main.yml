@@ -81,7 +81,7 @@
     set_fact:
       vol_labels_all: "{{ vol_labels + vol_labels_alt }}"
 
-  - name: Enable DATA disk into fstab on source VM
+  - name: Activate DATA disk automount
     replace:
       dest: /etc/fstab
       regexp: "^#(/dev/.*{{ item }}.*)"
