@@ -8,7 +8,7 @@
   ### Check destination VM
   - name: Get source VM facts
     cs_instance_facts:
-      api_region: "{{ source.domain ~ '_' ~ source.region | mandatory }}"
+      api_region: "{{ source.region | mandatory }}"
       name: "{{ hostname }}"
       domain: "{{ source.domain | mandatory }}"
     register: source_vm
@@ -21,7 +21,7 @@
 
   - name: Ensure destination VM is present and started
     cs_instance:
-      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      api_region: "{{ destination.region }}"
       name: "{{ hostname }}"
       domain: "{{ destination.domain|default(omit) }}"
     register: destination_vm
@@ -38,7 +38,7 @@
   ### Destroy source VM and DATA disk
   - name: Destroy source VM
     cs_instance:
-      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      api_region: "{{ source.region }}"
       name: "{{ hostname }}"
       domain: "{{ source.domain }}"
       state: expunged
@@ -50,7 +50,7 @@
 
   - name: Destroy DATA volume
     cs_volume:
-      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      api_region: "{{ source.region }}"
       zone: "{{ source.zone }}"
       state: absent
       name: "{{ data_volume }}"

@@ -1,7 +1,7 @@
 ---
 - name: Get source VM facts
   cs_instance_facts:
-    api_region: "{{ source.domain ~ '_' ~ source.region | mandatory }}"
+    api_region: "{{ source.region | mandatory }}"
     name: "{{ inventory_hostname }}"
     domain: "{{ source.domain | mandatory }}"
   register: vm
@@ -17,7 +17,7 @@
 
 - name: Ensure VM networks are present on destination
   cs_network:
-    api_region: "{{ source.domain ~ '_' ~ destination.region | mandatory }}"
+    api_region: "{{ destination.region | mandatory }}"
     zone: "{{ destination.zone|default(omit) }}"
     state: present
     domain: "{{ destination.domain | mandatory }}"
@@ -38,7 +38,7 @@
 
 - name: stop source VM
   cs_instance:
-    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_region: "{{ source.region }}"
     name: "{{ inventory_hostname }}"
     domain: "{{ source.domain }}"
     state: stopped
@@ -52,7 +52,7 @@
 
 - name: Extract DATA volume to make it downloadable
   cs_volume:
-    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_region: "{{ source.region }}"
     api_timeout: 1800
     zone: "{{ source.zone }}"
     state: extracted
@@ -64,7 +64,7 @@
 
 - name: Templatize source VM (ROOT disk)
   cs_template:
-    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_region: "{{ source.region }}"
     api_timeout: 1800
     zone: "{{ source.zone }}"
     name: "{{ inventory_hostname[:32] }}"
@@ -77,7 +77,7 @@
 
 - name: Extract template to make it downloadable
   cs_template:
-    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_region: "{{ source.region }}"
     api_timeout: 1800
     zone: "{{ source.zone }}"
     name: "{{ inventory_hostname[:32] }}"
@@ -89,7 +89,7 @@
 
 - name: Reserve VM IPs on destination networks
   cs_vlan_ip_range:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     state: present
     network: "{{ destination.domain.split('/')[1] ~ '|' ~ item.networkname.split(' - ')[2] ~ '|' ~ item.networkname.split(' - ')[0] }}"
@@ -112,7 +112,7 @@
 
 - name: Create affinity groups
   cs_affinitygroup:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
     project: "{{ destination.project|default(omit) }}"
@@ -123,7 +123,7 @@
 
 - name: Register VM template into destination
   cs_template:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     api_timeout: 1800
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
@@ -140,7 +140,7 @@
 
 - name: Recreate the VM into destination
   cs_instance:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
@@ -173,7 +173,7 @@
 
 - name: Download DATA volume into destination
   cs_volume:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     api_timeout: 1800
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
@@ -189,7 +189,7 @@
 
 - name: Attach DATA volume to the destination VM
   cs_volume:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     api_timeout: 1800
     zone: "{{ destination.zone|default(omit) }}"
     domain: "{{ destination.domain|default(omit) }}"
@@ -209,7 +209,7 @@
 
 - name: Stop the new VM in destination for HVM migration
   cs_instance:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
@@ -223,7 +223,7 @@
 
 - name: Update VM template to make it HVM ready
   cs_template:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
@@ -237,7 +237,7 @@
 
 - name: Restart the new VM in destination to make sure everything is OK
   cs_instance:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
@@ -249,7 +249,7 @@
 
 - name: Update DATA volume offer
   cs_volume:
-    api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+    api_region: "{{ destination.region }}"
     zone: "{{ destination.zone|default(omit) }}"
     account: admin
     domain: "{{ destination.domain|default(omit) }}"
@@ -261,7 +261,7 @@
 
 - name: Remove the temporary template from the source IaaS
   cs_template:
-    api_region: "{{ source.domain ~ '_' ~ source.region }}"
+    api_region: "{{ source.region }}"
     zone: "{{ source.zone }}"
     name: "{{ inventory_hostname[:32] }}"
     domain: "{{ source.domain }}"

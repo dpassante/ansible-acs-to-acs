@@ -7,7 +7,7 @@
   block:
   - name: Ensure destination VM is not present
     cs_instance:
-      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      api_region: "{{ destination.region }}"
       zone: "{{ destination.zone|default(omit) }}"
       account: admin
       domain: "{{ destination.domain|default(omit) }}"
@@ -18,7 +18,7 @@
 
   - name: Ensure DATA disk is not present in destination
     cs_volume:
-      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      api_region: "{{ destination.region }}"
       zone: "{{ destination.zone|default(omit) }}"
       account: admin
       domain: "{{ destination.domain|default(omit) }}"
@@ -29,7 +29,7 @@
 
   - name: Ensure template is absent in destination
     cs_template:
-      api_region: "{{ source.domain ~ '_' ~ destination.region }}"
+      api_region: "{{ destination.region }}"
       zone: "{{ destination.zone|default(omit) }}"
       account: admin
       domain: "{{ destination.domain|default(omit) }}"
@@ -40,7 +40,7 @@
 
   - name: Restart source VM
     cs_instance:
-      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      api_region: "{{ source.region }}"
       name: "{{ inventory_hostname }}"
       domain: "{{ source.domain }}"
       state: started
@@ -48,7 +48,7 @@
 
   - name: Remove the temporary template from the source IaaS
     cs_template:
-      api_region: "{{ source.domain ~ '_' ~ source.region }}"
+      api_region: "{{ source.region }}"
       zone: "{{ source.zone }}"
       name: "{{ inventory_hostname[:32] }}"
       domain: "{{ source.domain }}"

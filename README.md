@@ -20,10 +20,6 @@ To enable SSL support:
 sudo ./fix_ansible_cs_ssl_endpoints.sh
 ~~~
 
-### Configure your API keys
-
-Your API keys will be generated automatically on your first use. You'll just have to enter your LDAP password when it is requested.
-
 ### Configure your deployment
 
 Copy inventory file and group_vars from the `example` directory.
