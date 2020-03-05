@@ -11,15 +11,6 @@ It should also be possible to migrate from a zone to another in the same Cloudst
 
 # How to use?
 
-### SSL endpoints support
-
-This playbook calls CloudStack APIs over SSL, which is not supported in current versions of Ansible.
-
-To enable SSL support:
-~~~
-sudo ./fix_ansible_cs_ssl_endpoints.sh
-~~~
-
 ### Configure your deployment
 
 Copy inventory file and group_vars from the `example` directory.
