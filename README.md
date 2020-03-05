@@ -27,7 +27,17 @@ Run the playbook!
 Example run:
 
 ~~~
-ansible-playbook -i inventory site.yml -e force_yes=true -e ansible_user=dpassante -v
+ansible-playbook -i inventory site.yml -v
+~~~
+
+### Rollback
+
+If a problem appears during migration, use the rollback playbook which allows you to return to the initial state.
+
+Just run:
+
+~~~
+ansible-playbook -i inventory rollback.yml -v
 ~~~
 
 # Options
